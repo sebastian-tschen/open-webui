@@ -69,6 +69,43 @@ if [ -n "$SPACE_ID" ]; then
   export WEBUI_URL=${SPACE_HOST}
 fi
 
+
+
+# Check if CREATE_API_KEY is set, if so, configure for API usage
+if [ -n "$CREATE_API_KEY" ] && [ "$ENV" = "dev" ] ; then
+  echo "CREATE_API_KEY is set, configuring for API usage"
+  if [ -n "$ADMIN_USER_EMAIL" ] && [ -n "$ADMIN_USER_PASSWORD" ]; then
+    echo "Admin user configured, creating"
+    WEBUI_SECRET_KEY="$WEBUI_SECRET_KEY" uvicorn open_webui.main:app --host "$HOST" --port "$PORT" --forwarded-allow-ips '*' &
+    webui_pid=$!
+    echo "Waiting for webui to start..."
+    while ! curl -s http://localhost:8080/health > /dev/null; do
+      sleep 1
+    done
+    echo "Creating admin user..."
+    signup_response=$(curl \
+      -X POST "http://localhost:8080/api/v1/auths/signup" \
+      -H "accept: application/json" \
+      -H "Content-Type: application/json" \
+      -d "{ \"email\": \"${ADMIN_USER_EMAIL}\", \"password\": \"${ADMIN_USER_PASSWORD}\", \"name\": \"Admin\" }")
+    echo ""
+    token=$(echo "$signup_response" | jq -r .token)
+    echo "extracted token: $token"
+    echo "Creating api_key for admin...\n"
+    curl \
+      -X POST "http://localhost:8080/api/v1/auths/api_key" \
+      -H "accept: application/json" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer $token" \
+      -d "{ \"api_key\": \"${OPEN_WEBUI_API_KEY}\" }"
+    echo "Shutting down webui..."
+    kill $webui_pid
+  else 
+    echo "Admin user not configured, skipping creation"
+  fi
+fi
+
+
 PYTHON_CMD=$(command -v python3 || command -v python)
 
 WEBUI_SECRET_KEY="$WEBUI_SECRET_KEY" exec "$PYTHON_CMD" -m uvicorn open_webui.main:app --host "$HOST" --port "$PORT" --forwarded-allow-ips '*' --workers "${UVICORN_WORKERS:-1}"

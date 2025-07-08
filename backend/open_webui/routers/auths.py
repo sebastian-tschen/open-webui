@@ -8,6 +8,7 @@ from aiohttp import ClientSession
 from open_webui.models.auths import (
     AddUserForm,
     ApiKey,
+    ApiKeyForm,
     Auths,
     Token,
     LdapForm,
@@ -1014,14 +1015,23 @@ async def update_ldap_config(
 
 # create api key
 @router.post("/api_key", response_model=ApiKey)
-async def generate_api_key(request: Request, user=Depends(get_current_user)):
+async def generate_api_key(request: Request, form_data: Optional[ApiKeyForm], user=Depends(get_current_user)):
     if not request.app.state.config.ENABLE_API_KEY:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
             detail=ERROR_MESSAGES.API_KEY_CREATION_NOT_ALLOWED,
         )
 
-    api_key = create_api_key()
+    if form_data and form_data.api_key:
+        # check api key format
+        if not re.match(r"^sk-[a-f0-9]{32}$", form_data.api_key):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail=ERROR_MESSAGES.API_KEY_FORMAT_ERROR
+            )
+        api_key = form_data.api_key
+    else:
+        api_key = create_api_key()
     success = Users.update_user_api_key_by_id(user.id, api_key)
 
     if success:

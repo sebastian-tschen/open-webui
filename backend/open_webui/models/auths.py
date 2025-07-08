@@ -208,3 +208,7 @@ class AuthsTable:
 
 
 Auths = AuthsTable()
+
+    
+class ApiKeyForm(BaseModel):
+    api_key: Optional[str] = ""
